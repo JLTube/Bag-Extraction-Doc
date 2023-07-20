@@ -1,0 +1,204 @@
+# Extracting Images and PCD Files from .bag File
+
+## Overview
+
+This guide explains how to extract images and PCD (Point Cloud Data) files from a .bag file using ROS Noetic on Ubuntu 20.04 (recommended).
+
+## Prerequisites
+
+- Ubuntu 20.04(Focal Fossa) installed
+- ROS Noetic installed
+
+## Step 1: Install Ubuntu 20.04(Focal Fossa)
+
+[Download](https://releases.ubuntu.com/20.04/) and install Ubuntu Focal Fossa. Follow installtion gudie from [YouTube](https://www.youtube.com/results?search_query=install+ubuntu+20.04+focal+fossa) if needed help to install Ubuntu.
+
+After installing Ubuntu:
+
+1. Update debian package:
+
+        sudo apt update && sudo apt upgrade -y
+
+2. Configure your Ubuntu repositories to allow "restricted," "universe," and "multiverse.":
+
+    - Open source list using texteditor.
+
+            sudo nano /etc/apt/sources.list
+
+    - Look for "deb http://archive.ubuntu.com/ubuntu/ focal main restricted".  Add these two lines below then save and exit the texteditor.
+        
+            deb http://archive.ubuntu.com/ubuntu/ focal universe
+            deb http://archive.ubuntu.com/ubuntu/ focal multiverse
+
+3. Install ubuntu-restricted-extras and reboot the system:
+
+        sudo apt install ubuntu-restricted-extras
+        reboot
+
+## Step 2: Install ROS Noetic
+
+Follow the official [ROS Noetic installation](http://wiki.ros.org/noetic/Installation/Ubuntu) guide to install ROS on your Ubuntu system.
+
+1. Setup your computer to accept software from packages.ros.org:
+
+        sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list'
+
+2. Set up your keys:
+
+        sudo apt install curl ## if you haven't already installed curl
+        curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add -
+
+3. Installation:
+
+    - First, make sure your Debian package index is up-to-date:
+
+            sudo apt update
+
+    - Now install ROS Desktop-Full:
+
+            sudo apt install ros-noetic-desktop-full
+
+4. Environment setup:
+
+    - First, add the source script to the bash terminal.
+
+            echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
+
+    - Now activate the environment by executing the below command.
+
+            source ~/.bashrc
+
+## Step 3: Add ROS Noetic Dependency
+
+Up to now you have installed what you need to run the core ROS packages. To create and manage your own ROS workspaces, there are various tools and requirements that are distributed separately. 
+
+To install this tool and other dependencies for building ROS packages, run:
+
+        sudo apt install python3-rosdep python3-rosinstall python3-rosinstall-generator python3-wstool build-essential
+
+1. Install rosdep:
+
+        sudo apt install python3-rosdep
+
+2. Initialize rosdep
+
+        sudo rosdep init
+        rosdep update
+
+
+## Step 4: Extract PCD Files
+
+To extract PCD files from a .bag file, run the following command: [*refer*](https://github.com/ros/ros_comm/issues/2316)
+
+    rosrun pcl_ros bag_to_pcd Your-Bag-File.bag /Your/Bag/Topic/pcl2 ./Extract-To-Path/
+
+*Note:*
+
+*If `pcl_ros` package is not install, use this command (more packages [here](https://index.ros.org/search/)).*
+
+        sudo apt install ros-noetic-pcl-ros
+
+*Replace the following,*
+
+*1. `Your-Bag-File.bag` with path to your bag file. Eg: `rosbag_2022-12-04-16-36-53_44-001.bag`*
+
+*2. `/Your/Bag/Topic/pcl2` with the bag topic which has pcd data. Eg: `/lidar_0/vls128/pcl2`*
+
+*3. `./Extract-To-Path/` with the folder path where extracted pcd to get saved. Eg: `./pcd_data/`*
+
+## Step 5: Convert PCD Binary to ASCII (*optional*)
+
+If you're PCD data is in binary data, follow this step. Else you can ignore this step.
+
+1. Install Point Cloud Library:
+
+        sudo apt install libpcl-dev
+
+2. Install PCL Tool:
+
+        sudo apt install pcl-tools
+
+3. Binary to ASCII convertion command: [*refer*](https://stackoverflow.com/questions/56983991/how-to-unpack-convert-binary-data-in-a-file-into-readable-values)
+
+        pcl_convert_pcd_ascii_binary Your-Bag-File.pcd output-name.pcd 0
+
+*Note:*
+
+*Replace the following,*
+
+*1. `Your-Bag-File.pcd` with path to your binary pcd file. Eg: `1670164644.006192948.pcd`*
+
+*2. `output-name.pcd` with the output name in which the converted pcd file to be saved. Eg: `1670164644.006192948_ascii.pcd`*
+
+*3. `0` to covert the binary to ascii.*
+
+
+## Step 6: Extract Image Files:
+
+```python
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import os
+import argparse
+
+import cv2
+import numpy as np
+
+import rosbag
+from sensor_msgs.msg import CompressedImage
+from cv_bridge import CvBridge
+
+def main():
+    parser = argparse.ArgumentParser(description="Extract images from a ROS bag.")
+    parser.add_argument("bag_file", help="Input ROS bag.")
+    parser.add_argument("output_dir", help="Output directory.")
+    parser.add_argument("image_topic", help="Image topic.")
+
+    args = parser.parse_args()
+
+    print(f"Extract images from {args.bag_file} on topic {args.image_topic} into {args.output_dir}")
+
+    bag = rosbag.Bag(args.bag_file, "r")
+    bridge = CvBridge()
+    count = 0
+    for topic, msg, t in bag.read_messages(topics=[args.image_topic]):
+        np_arr = np.frombuffer(msg.data, np.uint8)
+        cv_img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+        stamp = msg.header.stamp
+        file_name = f"{stamp.secs}-{stamp.nsecs}.png"
+        cv2.imwrite(os.path.join(args.output_dir, file_name), cv_img)
+        print(f"Wrote image {file_name}")
+
+        count += 1
+
+    bag.close()
+
+if __name__ == '__main__':
+    main()
+```
+
+Create a python file Bag_to_Image.py and execture this script.
+
+        python3 Bag_to_Image.py Your-Bag-File.bag ./Extract-To-Path/ /Your/Bag/Topic/image_color/compressed
+
+*Note:*
+
+*Replace the following,*
+
+*1. `Your-Bag-File.bag` with path to your bag file. Eg: `rosbag_2022-12-04-16-36-53_44-001.bag`*
+
+*2. `./Extract-To-Path/` with the folder path where extracted pcd to get saved. Eg: `./img_data/`*
+
+*3. `/Your/Bag/Topic/pcl2` with the bag topic which has pcd data. Eg: `/pylon_camera_node_0/image_color/compressed`*
+
+# Contributing
+
+Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+
+# License
+
+This project is licensed under the [MIT License](https://mit-license.org/).
+
+Feel free to modify the instructions according to your specific use case. The above README file provides an outline for extracting images and PCD files from .bag files using ROS Noetic on Ubuntu 20.04.
